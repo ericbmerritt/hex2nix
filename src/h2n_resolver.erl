@@ -112,20 +112,21 @@ filter_seen(AppList, Acc) ->
 
 -spec update_deps_list(hex2nix:deps(), [hex2nix:app()]) -> [hex2nix:app()].
 update_deps_list(Deps, AppDeps) ->
-    lists:foldl(fun({Dep, DepVsn}, DepsListAcc) ->
-                        case DepVsn of
-                            <<"> ", Vsn/binary>> ->
-                                {ok, HighestDepVsn} =
-                                    find_highest_matching(Deps, Dep, '>', Vsn),
-                                [{Dep, HighestDepVsn} | DepsListAcc];
-                            <<"~> ", Vsn/binary>> ->
-                                {ok, HighestDepVsn} =
-                                    find_highest_matching(Deps, Dep, '~>', Vsn),
-                                [{Dep, HighestDepVsn} | DepsListAcc];
-                            Vsn ->
-                                [{Dep, Vsn} | DepsListAcc]
-                        end
-                end, [], AppDeps).
+    lists:usort(
+      lists:foldl(fun({Dep, DepVsn}, DepsListAcc) ->
+                          case DepVsn of
+                              <<"> ", Vsn/binary>> ->
+                                  {ok, HighestDepVsn} =
+                                      find_highest_matching(Deps, Dep, '>', Vsn),
+                                  [{Dep, HighestDepVsn} | DepsListAcc];
+                              <<"~> ", Vsn/binary>> ->
+                                  {ok, HighestDepVsn} =
+                                      find_highest_matching(Deps, Dep, '~>', Vsn),
+                                  [{Dep, HighestDepVsn} | DepsListAcc];
+                              Vsn ->
+                                  [{Dep, Vsn} | DepsListAcc]
+                          end
+                  end, [], AppDeps)).
 
 %% Hex supports use of ~> to specify the version required for a dependency.
 %% Since rebar3 requires exact versions to choose from we find the highest
