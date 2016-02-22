@@ -81,7 +81,7 @@ app_body(Dep = #dep_desc{app = {Name, Vsn},
                          sha = Sha},
          Deps) ->
     erlang_deps(Deps),
-    par([break(sep([text("buildHex"), text("{")]))
+    par([break(sep([text("buildHex"), text("({")]))
         , nest(par([key_value(<<"name">>, Name)
                    , key_value(<<"version">>, Vsn)
                    , key_value(<<"sha256">>, Sha)
@@ -89,7 +89,7 @@ app_body(Dep = #dep_desc{app = {Name, Vsn},
                    , build_plugins(BuildPlugins)
                    , erlang_deps(Deps)
                    , meta(Dep)]))
-        , text("}")]).
+        , text("} // packageOverrides)")]).
 
 -spec format_compile_port(h2n_fetcher:dep_desc()) -> prettypr:document().
 format_compile_port(#dep_desc{has_native_code = true}) ->
@@ -169,7 +169,8 @@ key_value_sep(Key, Value, Sep) ->
 -spec section_header([binary()]) -> prettypr:document().
 section_header(Deps) ->
     sep([text("{")
-        , nest(expand_arg_list([<<"buildHex">> | Deps], ",", []))
+        , nest(expand_arg_list([<<"buildHex">>,
+                                <<"packageOverrides ? {}">> | Deps], ",", []))
         , text("}:")]).
 
 -spec expand_arg_list([binary()], string(), [prettypr:document()]) ->
@@ -199,7 +200,7 @@ header(Failing) ->
     Header = [text("/* hex-packages.nix is an auto-generated file -- DO NOT EDIT! */")
              , text("")
              , list_failing(Failing)
-             , blank_line(text("{ stdenv, callPackage, overrides ? (self: super: {}) }:"))
+             , blank_line(text("{ stdenv, pkgs, callPackage, overrides ? (self: super: {}) }:"))
              , text("let")],
     vertical_list(Header).
 
