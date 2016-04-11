@@ -109,7 +109,7 @@ json_to_list(_) ->
 json_get_list(Key, Object) ->
     case lists:keysearch(Key, 1, Object) of
         {value, {_, Value}} ->
-            json_to_assoc_list(Value);
+            json_to_list(Value);
         false ->
             false
     end.

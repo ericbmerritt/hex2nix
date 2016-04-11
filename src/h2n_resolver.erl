@@ -28,7 +28,7 @@
 %% ============================================================================
 %% Exported Functions
 %% ============================================================================
--spec resolve_dependencies(hex2nix:deps()) ->
+-spec resolve_dependencies(hex2nix:indexed_deps()) ->
                                    [{hex2nix:app(), [hex2nix:app()]}].
 resolve_dependencies(Deps = #indexed_deps{roots = Roots}) ->
     {AppDescs, Resolved} = expand_dependencies(Deps),
@@ -43,7 +43,7 @@ resolve_dependencies(Deps = #indexed_deps{roots = Roots}) ->
 %% ============================================================================
 %% Internal Functions
 %% ============================================================================
--spec expand_dependencies(hex2nix:deps()) ->
+-spec expand_dependencies(hex2nix:indexed_deps()) ->
                                  {[{hex2nix:app(), [hex2nix:app()]}],
                                   sets:set(hex2nix:app())}.
 expand_dependencies(Deps = #indexed_deps{roots = Roots}) ->
@@ -62,7 +62,7 @@ expand_dependencies(Deps = #indexed_deps{roots = Roots}) ->
                       end
               end, {[], sets:new()}, Roots).
 
--spec expand_dependencies(hex2nix:deps()
+-spec expand_dependencies(hex2nix:indexed_deps()
                          , hex2nix:app()
                          , {[{hex2nix:app(), [hex2nix:app()]}]
                            , sets:set(hex2nix:app())}) ->
@@ -72,7 +72,7 @@ expand_dependencies(Deps = #indexed_deps{detail = Detail}
                    , App
                    , {Acc, AllDeps}) ->
     case dict:find(App, Detail) of
-        {ok, AppDeps} ->
+        {ok, #registry_app{deps=AppDeps}} ->
             DepsList = update_deps_list(Deps, AppDeps),
             {[{App, DepsList} | Acc],
              sets:union(AllDeps
@@ -83,7 +83,7 @@ expand_dependencies(Deps = #indexed_deps{detail = Detail}
     end.
 
 
--spec resolve_deps(hex2nix:deps(), {[hex2nix:app()], set:set(hex2nix:app())}) ->
+-spec resolve_deps(hex2nix:indexed_deps(), {[hex2nix:app()], set:set(hex2nix:app())}) ->
                           set:set(hex2nix:app()).
 resolve_deps(_, {[], Seen}) ->
     Seen;
@@ -92,7 +92,7 @@ resolve_deps(Deps = #indexed_deps{detail = Detail},
     resolve_deps(Deps,
                  lists:foldl(fun(App, {Acc, Seen1}) ->
                                      case dict:find(App, Detail) of
-                                         {ok, AppDeps} ->
+                                         {ok, #registry_app{deps = AppDeps}} ->
                                              DepsList =
                                                  filter_seen(update_deps_list(Deps
                                                                              , AppDeps)
@@ -110,7 +110,7 @@ filter_seen(AppList, Acc) ->
                  end, AppList).
 
 
--spec update_deps_list(hex2nix:deps(), [hex2nix:app()]) -> [hex2nix:app()].
+-spec update_deps_list(hex2nix:indexed_deps(), [hex2nix:app()]) -> [hex2nix:app()].
 update_deps_list(Deps, AppDeps) ->
     lists:usort(
       lists:foldl(fun({Dep, DepVsn}, DepsListAcc) ->
@@ -143,7 +143,7 @@ update_deps_list(Deps, AppDeps) ->
 %% `~> 2.1.3-dev` | `>= 2.1.3-dev and < 2.2.0`
 %% `~> 2.0` | `>= 2.0.0 and < 3.0.0`
 %% `~> 2.1` | `>= 2.1.0 and < 3.0.0`
--spec find_highest_matching(hex2nix:deps(), binary(), '>' | '~>', binary()) ->
+-spec find_highest_matching(hex2nix:indexed_deps(), binary(), '>' | '~>', binary()) ->
                                    {ok, binary()} | none.
 find_highest_matching(#indexed_deps{index = Index}, Name, MatchType, Constraint) ->
     case dict:find(Name, Index) of

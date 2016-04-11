@@ -49,7 +49,7 @@
 %% Exported Functions
 %% ============================================================================
 -spec update_with_information_from_hex_pm(boolean()
-                                         , hex2nix:deps()
+                                         , hex2nix:indexed_deps()
                                          , [h2n_resolver:app_dep()]) ->
                                          [dep_desc()].
 update_with_information_from_hex_pm(true, AllApps, Deps) ->
@@ -114,27 +114,29 @@ decompress_file(GzippedFileName, TargetDirectory) ->
     io:format("File uncompressed to ~s~n", [ResultFile]),
     {ok, ResultFile}.
 
--spec update_with_information_from_hex_pm2(hex2nix:deps(),
+-spec update_with_information_from_hex_pm2(hex2nix:indexed_deps(),
                                            [dep_desc()],
                                            [h2n_resolver:app_dep()]) ->
                                                   [dep_desc()].
 update_with_information_from_hex_pm2(AllApps, Cache, Deps) ->
     lists:map(
-      fun (AppDep={App={AppName, AppVsn}, _Deps}) ->
+      fun ({App={AppName, AppVsn}, AppDeps}) ->
               case lists:keysearch(App, #dep_desc.app, Cache) of
                   {value, Cached} ->
                       io:format("Found ~s ~s details in cache.~n", [AppName, AppVsn]),
                       Cached;
                   false ->
                       io:format("Fetching ~s ~s details from hex.pm.~n", [AppName, AppVsn]),
-                      decorate_app(AllApps, AppDep)
+                      decorate_app(AllApps, {AppName, AppVsn}, AppDeps)
               end
       end, Deps).
 
--spec decorate_app(hex2nix:deps(), {hex2nix:app(), [hex2nix:app()]}) ->
+-spec decorate_app(hex2nix:indexed_deps(), hex2nix:app(), [hex2nix:app()]) ->
                           dep_desc().
-decorate_app(#indexed_deps{roots=Roots} = AllApps,
-             {App={AppName, AppVsn}, Deps}) ->
+decorate_app(#indexed_deps{roots = Roots,
+                           detail = Details} = AllApps,
+             App={AppName, AppVsn}, Deps) ->
+    #registry_app{build_tools = BuildTools} = dict:fetch(App, Details),
     IsRoot = case sets:is_element(App, Roots) of
                  true ->
                      root;
@@ -150,10 +152,30 @@ decorate_app(#indexed_deps{roots=Roots} = AllApps,
              , position = IsRoot
              , licenses = Licenses
              , homepage = Link
+             , build_tool = select_build_tool(BuildTools)
              , sha = Sha
              , build_plugins = BuildPlugins
              , has_native_code = HasNativeCode
              , deps = Deps}.
+
+-spec tool_priority() -> [{binary(), integer(), hex2nix:recognized_build_tool()}].
+tool_priority() ->
+    [ {<<"rebar3">>, 0, rebar3}
+    , {<<"rebar">>, 1, rebar3}
+    , {<<"erlang.mk">>, 2, 'erlang.mk'}
+    , {<<"make">>, 3, make}
+    , {<<"mix">>, 99, mix}
+    ].
+
+-spec select_build_tool([binary()]) -> hex2nix:recognized_build_tool().
+select_build_tool(Tools) ->
+    io:format("select_build_tool ~p~n", [Tools]),
+    M = lists:map(fun(T) ->
+                          {value, V} = lists:keysearch(T, 1, tool_priority()),
+                          V
+                  end, Tools),
+    {_, _, Res} = hd(lists:keysort(2, M)),
+    Res.
 
 -spec get_app_detail_from_hex_pm(binary()) -> jsx:json_term().
 get_app_detail_from_hex_pm(AppName) ->
@@ -173,7 +195,7 @@ get_app_detail_from_hex_pm(AppName) ->
 
 -spec get_deep_meta_for_package(hex2nix:app_name()
                                , hex2nix:app_version()
-                               , hex2nix:deps())
+                               , hex2nix:indexed_deps())
                                -> {sha(), boolean(), [hex2nix:app_name()]}.
 get_deep_meta_for_package(AppName, AppVsn, AllApps) ->
     TempDirectory = h2n_util:temp_directory(),
@@ -199,7 +221,7 @@ get_deep_meta_for_package(AppName, AppVsn, AllApps) ->
 -spec has_native_code_and_plugins(hex2nix:app_name(),
                                   file:filename(),
                                   file:filename(),
-                                  hex2nix:deps())
+                                  hex2nix:indexed_deps())
                                  -> {boolean(), [hex2nix:app_name()]}.
 has_native_code_and_plugins(AppName, TempDirectory, TargetPath, AllApps) ->
     ok = erl_tar:extract(TargetPath, [{cwd, TempDirectory}]),
@@ -236,7 +258,7 @@ analyze_rebar_config(TempDirectory, DirListing) ->
 
 -spec filter_out_unknown_plugins(hex2nix:app_name(),
                                  [hex2nix:app_name()],
-                                 hex2nix:deps())
+                                 hex2nix:indexed_deps())
                                 -> [hex2nix:app_name()].
 filter_out_unknown_plugins(AppName, BuildPlugins, #indexed_deps{index = All}) ->
     {Good, Dropped} = lists:partition(

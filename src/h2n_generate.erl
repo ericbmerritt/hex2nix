@@ -75,13 +75,19 @@ format_position(Name, NixName, root) ->
 format_position(_, _, _) ->
     empty().
 
+-spec build_tool_to_nix(hex2nix:recognized_build_tool()) -> binary().
+build_tool_to_nix(rebar3)      -> <<"buildHex">>;
+build_tool_to_nix('erlang.mk') -> <<"buildHexErlangMk">>;
+build_tool_to_nix('make') -> <<"buildHexMakeWithErlang">>.
+
 -spec app_body(h2n_fetcher:dep_despc(), [binary()]) -> prettypr:document().
 app_body(Dep = #dep_desc{app = {Name, Vsn},
+                         build_tool = BuildTool,
                          build_plugins = BuildPlugins,
                          sha = Sha},
          Deps) ->
-    erlang_deps(Deps),
-    par([break(sep([text("buildHex"), text("({")]))
+    NixBuildFunction = build_tool_to_nix(BuildTool),
+    par([break(sep([text(NixBuildFunction), text("({")]))
         , nest(par([key_value(<<"name">>, Name)
                    , key_value(<<"version">>, Vsn)
                    , key_value(<<"sha256">>, Sha)
@@ -168,8 +174,11 @@ key_value_sep(Key, Value, Sep) ->
 
 -spec section_header([binary()]) -> prettypr:document().
 section_header(Deps) ->
+    %% TODO(gleber): selectively mention build function
     sep([text("{")
         , nest(expand_arg_list([<<"buildHex">>,
+                                <<"buildHexErlangMk">>,
+                                <<"buildHexMakeWithErlang">>,
                                 <<"packageOverrides ? {}">> | Deps], ",", []))
         , text("}:")]).
 

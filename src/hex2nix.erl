@@ -18,19 +18,24 @@
 %%
 %% Types
 %%
--export_type([app/0, app_version/0, deps/0,
+-export_type([app/0, app_version/0, indexed_deps/0,
+              recognized_build_tool/0, build_tools/0,
               app_name/0]).
-
--type version_constraint() :: binary().
 
 -type app_name() :: binary().
 -type app_version() :: binary().
 
 -type app() :: {app_name(), app_version()}.
 
--type app_detail() :: [{app_name(), version_constraint()}].
+-type version_constraint() :: binary().
+-type app_deps_cons() :: [{app_name(), version_constraint()}].
 
--type deps() :: #indexed_deps{}.
+-type registry_app() :: #registry_app{}.
+
+-type recognized_build_tool() :: 'rebar3' | 'erlang.mk' | 'make' | 'mix'.
+-type build_tools() :: [binary()].
+
+-type indexed_deps() :: #indexed_deps{}.
 
 %%
 %% Variables
@@ -166,7 +171,7 @@ start_dependencies() ->
 %% ============================================================================
 
 -spec split_data_into_versions_and_detail([term()]) ->
-                                                 {[app()], [{app(), app_detail()}]}.
+                                                 {[app()], [{app(), app_deps_cons()}]}.
 split_data_into_versions_and_detail(AppData) ->
     lists:partition(fun({Name, _}) when erlang:is_binary(Name) ->
                             true;
@@ -174,20 +179,24 @@ split_data_into_versions_and_detail(AppData) ->
                             false
                     end, AppData).
 
--spec find_all_buildable_versions(dict:dict(app(), app_detail())) ->
+-spec find_all_buildable_versions(dict:dict(app(), registry_app())) ->
                                          dict:dict(app_name(), [app_version()]).
 find_all_buildable_versions(AppData) ->
     dict:fold(fun({Name, Version}, _, Acc) ->
                       dict:append(Name, Version, Acc)
                 end, dict:new(), AppData).
 
--spec cleanup_app_data(string(), [any()]) -> dict:dict(app(), app_detail()).
+-spec cleanup_app_data(string(), [any()]) -> dict:dict(app(), registry_app()).
 cleanup_app_data(Filter, AppData) ->
     lists:foldl(fun({App, [Deps, _, BuildSystems]}, Acc) ->
                         case (is_supported_build_system(BuildSystems) andalso
                               filter_by_name(Filter, App)) of
                             true ->
-                                dict:store(App, simplify_deps(Deps), Acc);
+                                dict:store(
+                                  App, #registry_app{
+                                          app = App,
+                                          deps = simplify_deps(Deps),
+                                          build_tools = BuildSystems}, Acc);
                             false ->
                                 Acc
                         end;
@@ -225,7 +234,7 @@ is_supported_build_system(<<"make">>) ->  true;
 is_supported_build_system(<<"rebar">>) ->  true;
 is_supported_build_system(_) ->  false.
 
--spec reduce_to_latest_buildable_version(dict:dict(app(), app_detail()),
+-spec reduce_to_latest_buildable_version(dict:dict(app(), registry_app()),
                                          [{app_name(), [app_version()]}]) ->
                                                 [app()].
 reduce_to_latest_buildable_version(AppData, AppVersions) ->
@@ -233,7 +242,7 @@ reduce_to_latest_buildable_version(AppData, AppVersions) ->
       fun({Name, [Versions]}, Acc) ->
               SortedVersions = lists:sort(fun ec_semver:gte/2, Versions),
               case find_latest_available_version(Name, SortedVersions, AppData) of
-                  {ok,  HardVersion} ->
+                  {ok, HardVersion} ->
                       [{Name, HardVersion} | Acc];
                   error ->
                       Acc
@@ -242,7 +251,7 @@ reduce_to_latest_buildable_version(AppData, AppVersions) ->
 
 -spec find_latest_available_version(app_name(),
                                     [app_version()],
-                                    dict:dict(app(), app_detail())) ->
+                                    dict:dict(app(), registry_app())) ->
                                            {ok, app_version()} | error.
 find_latest_available_version(_, [], _) ->
     error;
